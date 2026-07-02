@@ -26,7 +26,7 @@ from data_pipeline import build_datasets, causal_lm_collate
 # batch_size to 8, and epochs to 3 for a stronger result.
 CONFIG = {
     "base_model": "distilgpt2",
-    "subset_size": 600,        # how many Dolly examples to use (of 15k) — small on purpose for CPU
+    "subset_size": 15000,        # how many Dolly examples to use (of 15k) — small on purpose for CPU
     "max_length": 256,
     "val_frac": 0.08,
     "seed": 42,

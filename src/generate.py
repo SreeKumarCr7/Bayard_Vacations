@@ -53,6 +53,8 @@ def generate(model, tokenizer, prompt: str, temperature: float = 0.8,
         max_new_tokens=max_new_tokens,
         do_sample=do_sample,
         pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+        repetition_penalty=1.3,      # penalizes tokens already generated -> discourages loops
+        no_repeat_ngram_size=3,      # hard-blocks repeating any 3-gram verbatim
     )
     if do_sample:
         gen_kwargs["temperature"] = max(temperature, 1e-4)

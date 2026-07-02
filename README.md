@@ -24,7 +24,7 @@ python -m venv venv
 source venv/bin/activate       # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
-GPU strongly recommended (Colab free-tier T4 is enough) but not required — distilgpt2
+
 + LoRA on ~4k examples will run on CPU, just slower.
 
 ## Run training
