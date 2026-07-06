@@ -21,12 +21,11 @@ from peft import LoraConfig, get_peft_model, TaskType
 from data_pipeline import build_datasets, causal_lm_collate
 
 # ---------------- CONFIG ----------------
-# NOTE: tuned for CPU-only training within a short time box (see README).
-# If you later run this on a GPU, bump subset_size to 4000, max_length to 512,
-# batch_size to 8, and epochs to 3 for a stronger result.
+# Trained on the full Dolly-15k dataset with LoRA on distilgpt2.
+# On CPU this takes several hours; on a free-tier GPU (Colab T4) ~20 min.
 CONFIG = {
     "base_model": "distilgpt2",
-    "subset_size": 15000,        # how many Dolly examples to use (of 15k) — small on purpose for CPU
+    "subset_size": None,        # None = use all ~15k Dolly examples
     "max_length": 256,
     "val_frac": 0.08,
     "seed": 42,
@@ -73,7 +72,9 @@ def main():
     print(f"Train examples: {len(train_data)} | Val examples: {len(val_data)}")
 
     # Leakage check (belt-and-suspenders, also covered in tests/)
-    assert len(set(id(x) for x in train_data) & set(id(x) for x in val_data)) == 0
+    train_keys = {tuple(x["input_ids"]) for x in train_data}
+    val_keys = {tuple(x["input_ids"]) for x in val_data}
+    assert len(train_keys & val_keys) == 0, "Data leakage detected between train and val!"
 
     model = AutoModelForCausalLM.from_pretrained(CONFIG["base_model"])
     model.resize_token_embeddings(len(tokenizer))

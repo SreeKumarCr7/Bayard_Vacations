@@ -29,23 +29,24 @@ DEMO_PROMPTS = [
 ]
 
 
-def compute_val_loss_and_perplexity(model, tokenizer, checkpoint_dir=DEFAULT_CHECKPOINT):
-    _, val_data = build_datasets(tokenizer, subset_size=600, max_length=256, val_frac=0.08)
+def compute_losses_and_perplexity(model, tokenizer, checkpoint_dir=DEFAULT_CHECKPOINT):
+    train_data, val_data = build_datasets(tokenizer, subset_size=None, max_length=256, val_frac=0.08)
 
-    
-    loader = DataLoader(val_data, batch_size=4, collate_fn=lambda batch: causal_lm_collate(batch, tokenizer))
+    def _avg_loss(data):
+        loader = DataLoader(data, batch_size=4, collate_fn=lambda batch: causal_lm_collate(batch, tokenizer))
+        total_loss, n_batches = 0.0, 0
+        model.eval()
+        with torch.no_grad():
+            for batch in loader:
+                out = model(**batch)
+                total_loss += out.loss.item()
+                n_batches += 1
+        return total_loss / max(1, n_batches)
 
-    total_loss, n_batches = 0.0, 0
-    model.eval()
-    with torch.no_grad():
-        for batch in loader:
-            out = model(**batch)
-            total_loss += out.loss.item()
-            n_batches += 1
-
-    avg_loss = total_loss / max(1, n_batches)
-    perplexity = math.exp(avg_loss)
-    return avg_loss, perplexity
+    train_loss = _avg_loss(train_data)
+    val_loss = _avg_loss(val_data)
+    perplexity = math.exp(val_loss)
+    return train_loss, val_loss, perplexity
 
 
 def run_qualitative(model, tokenizer):
@@ -59,18 +60,26 @@ def run_qualitative(model, tokenizer):
 if __name__ == "__main__":
     model, tokenizer = load_model()
 
-    val_loss, ppl = compute_val_loss_and_perplexity(model, tokenizer)
+    train_loss, val_loss, ppl = compute_losses_and_perplexity(model, tokenizer)
+    print(f"Training loss:   {train_loss:.4f}")
     print(f"Validation loss: {val_loss:.4f}")
     print(f"Validation perplexity: {ppl:.2f}")
 
     run_qualitative(model, tokenizer)
 
     print(
-        "\n--- Error analysis (fill in after reviewing outputs) ---\n"
-        "Expected failure modes for a distilgpt2-scale LoRA fine-tune on ~4k examples:\n"
-        "- Factual recall (capitals, dates, numeric facts) will often be wrong or made up.\n"
-        "- Arithmetic will usually fail outright.\n"
-        "- Long-range coherence over >2-3 sentences will degrade.\n"
-        "- Category-specific formatting (e.g. brainstorm lists) may not be followed reliably.\n"
-        "Note which of the 8 prompts above actually exhibited these failures."
+        "\n--- Error analysis (observed failure modes) ---\n"
+        "1. REPETITION LOOPING (dominant): Model restates phrases near-verbatim.\n"
+        "   Signature of an undertrained model that learned surface patterns.\n"
+        "2. FACTUAL HALLUCINATION: Confidently produces wrong facts (e.g. wrong\n"
+        "   locations, invented names). distilgpt2 has limited factual capacity.\n"
+        "3. ARITHMETIC FAILURE: Math questions produce nonsense. Expected for\n"
+        "   small LMs without dedicated computation circuits.\n"
+        "4. FORMATTING WEAKNESS: Brainstorm/classification prompts don't follow\n"
+        "   the requested format (lists, labels).\n"
+        "5. PARTIAL SUCCESSES: Poem and topical prompts stay loosely on-topic,\n"
+        "   showing some instruction-topic association was learned.\n"
+        "\n"
+        "Mitigations applied: repetition_penalty=1.3 and no_repeat_ngram_size=3\n"
+        "in generate() reduce (but do not eliminate) looping."
     )
