@@ -18,6 +18,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from data_pipeline import load_and_format, train_val_split, tokenize_example, build_datasets
 from generate import DEFAULT_CHECKPOINT, load_model, generate
+from retriever import retrieve
 
 BASE_MODEL = "distilgpt2"
 
@@ -179,3 +180,15 @@ def test_fixed_prompt_quality_gate():
             # no obvious 3-gram repetition loop
             trigrams = [tuple(words[i:i+3]) for i in range(len(words) - 2)]
             assert len(trigrams) == 0 or len(set(trigrams)) > 1
+
+
+# ---------- Bonus: RAG retriever tests ----------
+def test_retriever_finds_relevant_match():
+    result = retrieve("Where is Bengaluru?")
+    assert result is not None
+    assert "karnataka" in result.lower() or "bangalore" in result.lower()
+
+
+def test_retriever_returns_none_for_no_match():
+    result = retrieve("What is your favorite ice cream flavor combination?")
+    assert result is None

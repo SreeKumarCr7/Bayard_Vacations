@@ -30,7 +30,9 @@ DEMO_PROMPTS = [
 
 
 def compute_losses_and_perplexity(model, tokenizer, checkpoint_dir=DEFAULT_CHECKPOINT):
-    train_data, val_data = build_datasets(tokenizer, subset_size=None, max_length=256, val_frac=0.08)
+    # Sample a subset for the training-loss estimate (full 14k+ examples is too slow on CPU
+    # for a quick check) -- validation loss still uses the full held-out val split.
+    train_data, val_data = build_datasets(tokenizer, subset_size=1500, max_length=256, val_frac=0.08)
 
     def _avg_loss(data):
         loader = DataLoader(data, batch_size=4, collate_fn=lambda batch: causal_lm_collate(batch, tokenizer))

@@ -10,6 +10,8 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 
+from retriever import retrieve
+
 BASE_MODEL = "distilgpt2"
 DEFAULT_CHECKPOINT = "checkpoints/distilgpt2-dolly-lora"
 
@@ -59,8 +61,6 @@ def generate(model, tokenizer, prompt: str, temperature: float = 0.8,
     if do_sample:
         gen_kwargs["temperature"] = max(temperature, 1e-4)
         gen_kwargs["top_p"] = 0.9
-    else:
-        gen_kwargs["num_beams"] = 4  # beam search -> more coherent, less garbled output
 
     with torch.no_grad():
         output_ids = model.generate(**inputs, **gen_kwargs)
@@ -70,19 +70,35 @@ def generate(model, tokenizer, prompt: str, temperature: float = 0.8,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--greedy", action="store_true", help="use beam search instead of sampling")
     parser.add_argument("--prompt", type=str, required=True)
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--max_new_tokens", type=int, default=100)
     parser.add_argument("--checkpoint", type=str, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--use_rag", action="store_true",
+                         help="retrieve a relevant fact snippet and include it as context")
     args = parser.parse_args()
 
     model, tokenizer = load_model(args.checkpoint)
-    formatted_prompt = f"### Instruction:\n{args.prompt}\n\n### Response:\n"
+
+    retrieved_context = None
+    if args.use_rag:
+        retrieved_context = retrieve(args.prompt)
+
+    if retrieved_context:
+        formatted_prompt = (
+            f"### Instruction:\n{args.prompt}\n\n"
+            f"### Context:\n{retrieved_context}\n\n"
+            f"### Response:\n"
+        )
+        print(f"[RAG] Retrieved context: {retrieved_context}\n")
+    else:
+        if args.use_rag:
+            print("[RAG] No relevant context found in knowledge base; generating without retrieval.\n")
+        formatted_prompt = f"### Instruction:\n{args.prompt}\n\n### Response:\n"
+
     result = generate(
         model, tokenizer, formatted_prompt,
-        temperature=args.temperature, max_new_tokens=args.max_new_tokens,
-        do_sample=not args.greedy, seed=args.seed,
+        temperature=args.temperature, max_new_tokens=args.max_new_tokens, seed=args.seed,
     )
     print(result)
