@@ -31,13 +31,15 @@ def format_example(example: dict) -> tuple[str, str]:
     return prompt, response
 
 
-def load_and_format(subset_size: int | None = 4000, seed: int = 42) -> list[dict]:
+def load_and_format(subset_size: int | None = None, seed: int = 42) -> list[dict]:
     """
     Load Dolly-15k, filter empty responses, format, and optionally subsample.
 
-    subset_size=4000 is a deliberate choice: enough to show a real training curve
-    within a couple of hours on a free-tier GPU, small enough to not blow the time box.
-    Set to None to use the full 15k.
+    Default is None -> uses the full ~15k dataset, which is what the submitted
+    checkpoint was actually trained on (see CONFIG["subset_size"] in train.py).
+    A smaller subset_size can be passed for fast local iteration/testing only
+    (e.g. the test suite uses small values like 12-200 examples purely to keep
+    unit tests fast -- this has no bearing on the actual trained model).
     """
     raw = load_dataset("databricks/databricks-dolly-15k", split="train")
 
@@ -95,7 +97,7 @@ def tokenize_example(example: dict, tokenizer, max_length: int = 512) -> dict:
     }
 
 
-def build_datasets(tokenizer, subset_size: int | None = 4000, max_length: int = 512,
+def build_datasets(tokenizer, subset_size: int | None = None, max_length: int = 512,
                     val_frac: float = 0.05, seed: int = 42):
     """Full pipeline: load -> filter/format -> split -> tokenize. Returns (train, val) as lists of dicts."""
     examples = load_and_format(subset_size=subset_size, seed=seed)
@@ -106,16 +108,26 @@ def build_datasets(tokenizer, subset_size: int | None = 4000, max_length: int = 
 
     return train_tok, val_tok
 
+
 def causal_lm_collate(batch: list[dict], tokenizer):
+    """
+    Custom collator: pads input_ids/attention_mask/labels to the same length within
+    a batch. Needed because our labels are pre-masked with -100 on the prompt tokens
+    (not simply a copy of input_ids), which the default DataCollatorForLanguageModeling
+    doesn't handle.
+    """
     import torch
+
     max_len = max(len(ex["input_ids"]) for ex in batch)
     pad_id = tokenizer.pad_token_id
+
     input_ids, attention_mask, labels = [], [], []
     for ex in batch:
         pad_len = max_len - len(ex["input_ids"])
         input_ids.append(ex["input_ids"] + [pad_id] * pad_len)
         attention_mask.append(ex["attention_mask"] + [0] * pad_len)
         labels.append(ex["labels"] + [-100] * pad_len)
+
     return {
         "input_ids": torch.tensor(input_ids, dtype=torch.long),
         "attention_mask": torch.tensor(attention_mask, dtype=torch.long),
