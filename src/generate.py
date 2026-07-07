@@ -77,6 +77,10 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--use_rag", action="store_true",
                          help="retrieve a relevant fact snippet and include it as context")
+    parser.add_argument("--extractive", action="store_true",
+                         help="when combined with --use_rag: if a confident match is found, "
+                              "return the retrieved fact directly instead of generating a "
+                              "response, avoiding the model garbling or ignoring it")
     args = parser.parse_args()
 
     model, tokenizer = load_model(args.checkpoint)
@@ -86,12 +90,21 @@ if __name__ == "__main__":
         retrieved_context = retrieve(args.prompt)
 
     if retrieved_context:
+        print(f"[RAG] Retrieved context: {retrieved_context}\n")
+
+        if args.extractive:
+            # Extractive shortcut: skip generation entirely, return the retrieved fact
+            # directly. This guarantees a factually grounded answer for any query the
+            # knowledge base actually covers, at the cost of losing the model's own
+            # phrasing/summarization -- a legitimate trade-off for high-confidence lookups.
+            print(f"### Response:\n{retrieved_context}")
+            exit(0)
+
         formatted_prompt = (
             f"### Instruction:\n{args.prompt}\n\n"
             f"### Context:\n{retrieved_context}\n\n"
             f"### Response:\n"
         )
-        print(f"[RAG] Retrieved context: {retrieved_context}\n")
     else:
         if args.use_rag:
             print("[RAG] No relevant context found in knowledge base; generating without retrieval.\n")
